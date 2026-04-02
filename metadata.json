@@ -1,0 +1,5 @@
+{
+  "name": "Futsal Pro Manager",
+  "description": "A comprehensive management system for futsal tournaments, featuring team registration, match scheduling, real-time standings, and knockout brackets.",
+  "requestFramePermissions": []
+}
