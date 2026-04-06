@@ -92,6 +92,40 @@ const scheduleMatches = (matches: Match[]) => {
   return scheduled;
 };
 
+const generateRoundRobin = (teams: Team[], groupName?: string, startDate?: string) => {
+  const matches: Match[] = [];
+  const n = teams.length;
+  if (n < 2) return [];
+
+  const teamIds = teams.map(t => t.id);
+  if (n % 2 !== 0) teamIds.push('BYE'); // Add a dummy team for odd number of teams
+
+  const rounds = teamIds.length - 1;
+  const half = teamIds.length / 2;
+
+  for (let round = 0; round < rounds; round++) {
+    for (let i = 0; i < half; i++) {
+      const home = teamIds[i];
+      const away = teamIds[teamIds.length - 1 - i];
+
+      if (home !== 'BYE' && away !== 'BYE') {
+        matches.push({
+          id: crypto.randomUUID(),
+          homeTeamId: home,
+          awayTeamId: away,
+          date: startDate || new Date().toISOString(),
+          status: 'scheduled',
+          round: round + 1,
+          group: groupName
+        });
+      }
+    }
+    // Rotate teamIds (keep first team fixed)
+    teamIds.splice(1, 0, teamIds.pop()!);
+  }
+  return matches;
+};
+
 // --- Mock Initial Data ---
 const INITIAL_TOURNAMENTS: Tournament[] = [
   {
@@ -413,18 +447,18 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Times por Grupo</label>
-                    <select name="perGroup" className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <select name="perGroup" className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" defaultValue="4">
                       <option value="3">3 times</option>
-                      <option value="4" selected>4 times</option>
+                      <option value="4">4 times</option>
                       <option value="5">5 times</option>
                       <option value="6">6 times</option>
                     </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Classificados/Grupo</label>
-                    <select name="qualify" className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <select name="qualify" className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" defaultValue="2">
                       <option value="1">1 por grupo</option>
-                      <option value="2" selected>2 por grupo</option>
+                      <option value="2">2 por grupo</option>
                       <option value="3">3 por grupo</option>
                     </select>
                   </div>
@@ -1021,10 +1055,11 @@ function TournamentDetails({ tournament, onUpdate, onBack }: { tournament: Tourn
 
                   const groups: Record<string, Team[]> = {};
                   const groupNames = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+                  const perGroup = tournament.config?.perGroup || 4;
                   
                   // Assign groups
                   teams.forEach((team, idx) => {
-                    const gIdx = Math.floor(idx / 4);
+                    const gIdx = Math.floor(idx / perGroup);
                     const gName = `Grupo ${groupNames[gIdx] || (gIdx + 1)}`;
                     team.groupId = gName;
                     if (!groups[gName]) groups[gName] = [];
@@ -1034,19 +1069,8 @@ function TournamentDetails({ tournament, onUpdate, onBack }: { tournament: Tourn
                   const matches: Match[] = [];
                   Object.keys(groups).forEach(gName => {
                     const gTeams = groups[gName];
-                    for (let i = 0; i < gTeams.length; i++) {
-                      for (let j = i + 1; j < gTeams.length; j++) {
-                        matches.push({
-                          id: crypto.randomUUID(),
-                          homeTeamId: gTeams[i].id,
-                          awayTeamId: gTeams[j].id,
-                          date: tournament.date,
-                          status: 'scheduled',
-                          round: 1,
-                          group: gName
-                        });
-                      }
-                    }
+                    const gMatches = generateRoundRobin(gTeams, gName, tournament.date);
+                    matches.push(...gMatches);
                   });
 
                   onUpdate({ ...tournament, teams, matches: scheduleMatches(matches) });
@@ -1249,13 +1273,29 @@ function TournamentDetails({ tournament, onUpdate, onBack }: { tournament: Tourn
             <div className="space-y-8">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold text-slate-900">{tournament.matches.length} Partidas</h3>
-                <button 
-                  onClick={() => setEditingMatch({ id: '', homeTeamId: '', awayTeamId: '', date: tournament.date, status: 'scheduled', round: 1 })}
-                  className="flex items-center gap-2 text-indigo-600 font-bold hover:bg-indigo-50 px-4 py-2 rounded-xl transition-all"
-                >
-                  <Plus size={20} />
-                  Nova Partida
-                </button>
+                <div className="flex gap-2">
+                  {tournament.teams.length >= 2 && (
+                    <button 
+                      onClick={() => {
+                        const matches = generateRoundRobin(tournament.teams, 'Geral', tournament.date);
+                        onUpdate({ ...tournament, matches: scheduleMatches(matches) });
+                        setActiveSubTab('schedule');
+                      }}
+                      className="flex items-center gap-2 text-amber-600 font-bold hover:bg-amber-50 px-4 py-2 rounded-xl transition-all"
+                      title="Gera partidas todos contra todos, independente de grupos"
+                    >
+                      <Calendar size={20} />
+                      Gerar Automáticas
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => setEditingMatch({ id: '', homeTeamId: '', awayTeamId: '', date: tournament.date, status: 'scheduled', round: 1 })}
+                    className="flex items-center gap-2 text-indigo-600 font-bold hover:bg-indigo-50 px-4 py-2 rounded-xl transition-all"
+                  >
+                    <Plus size={20} />
+                    Nova Partida
+                  </button>
+                </div>
               </div>
 
               {tournament.matches.length === 0 && (
